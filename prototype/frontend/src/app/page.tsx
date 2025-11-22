@@ -5,6 +5,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import { v4 as uuidv4 } from "uuid";
 import MainHeader from "../components/MainHeader";
 import Sidebar from "../components/Sidebar";
+import LogoPanel from "../components/LogoPanel";
 import OverlappingPages from "../components/OverlappingPages";
 import TitleHeader, { Chat } from "../components/TitleHeader";
 import BreadcrumbHeader from "../components/BreadcrumbHeader";
@@ -420,14 +421,17 @@ export default function ChatPage() {
       <MainHeader title="Cogniflow" />
 
       <div className="flex flex-1 overflow-hidden">
-        <Sidebar
-          isCollapsed={isSidebarCollapsed}
-          onToggle={() => setSidebarCollapsed(!isSidebarCollapsed)}
-          chats={chats}
-          activeChatId={activeChatId}
-          onChatClick={setActiveChatId}
-          onToggleTreeView={handleToggleTreeView}
-        />
+        <div className={`flex flex-col ${isSidebarCollapsed ? 'w-16' : 'w-64'}`}>
+          <LogoPanel isCollapsed={isSidebarCollapsed} />
+          <Sidebar
+            isCollapsed={isSidebarCollapsed}
+            onToggle={() => setSidebarCollapsed(!isSidebarCollapsed)}
+            chats={chats}
+            activeChatId={activeChatId}
+            onChatClick={setActiveChatId}
+            onToggleTreeView={handleToggleTreeView}
+          />
+        </div>
 
         <OverlappingPages
           breadcrumbs={breadcrumbs}
