@@ -69,6 +69,7 @@ export default function ChatPage() {
     const newChat: Chat = {
       id: newChatId,
       parentId: sourceMessage.chatId,
+      sourceMessageId: sourceMessage.id,
       title: selectedText.substring(0, 40) + "..."
     };
     setChats(prev => [...prev, newChat]);
@@ -189,7 +190,12 @@ export default function ChatPage() {
 
           <BreadcrumbHeader breadcrumbs={breadcrumbs} onBreadcrumbClick={setActiveChatId} />
 
-          <ChatWindow messages={visibleMessages} onBranchFromSelection={handleBranchFromSelection} />
+          <ChatWindow 
+            messages={visibleMessages} 
+            chats={chats} 
+            onBranchFromSelection={handleBranchFromSelection} 
+            onChatClick={setActiveChatId} 
+          />
 
           <ChatInput input={input} onInputChange={setInput} onSend={handleSend} />
         </div>
