@@ -21,6 +21,7 @@ interface TitleHeaderProps {
   onMerge: () => void;
   onPrune: () => void;
   isRootChat: boolean;
+  onSummarize?: () => void;
 }
 
 const TitleHeader: React.FC<TitleHeaderProps> = ({
@@ -34,6 +35,7 @@ const TitleHeader: React.FC<TitleHeaderProps> = ({
   onMerge,
   onPrune,
   isRootChat,
+  onSummarize,
 }) => {
   const handleTitleClick = () => {
     if (chat && !isEditing) {
@@ -74,8 +76,19 @@ const TitleHeader: React.FC<TitleHeaderProps> = ({
         </button>
       </div>
       
-      {!isRootChat && (
-        <div className="flex items-center gap-2 pl-4 flex-shrink-0">
+      <div className="flex items-center gap-2 pl-4 flex-shrink-0">
+        {onSummarize && (
+          <button
+            onClick={onSummarize}
+            className="flex items-center justify-center h-8 px-2 rounded-md bg-blue-500 text-white shadow-xs hover:bg-blue-600"
+            title="Summarize & branch"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3h18v4H3z"/><path d="M8 7v13"/><path d="m12 7 6 6"/><path d="M12 13h6v7"/></svg>
+          </button>
+        )}
+
+        {!isRootChat && (
+        <>
           <span className="text-sm text-muted-foreground">Merge?</span>
           <button
             onClick={onMerge}
@@ -91,8 +104,9 @@ const TitleHeader: React.FC<TitleHeaderProps> = ({
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
           </button>
-        </div>
-      )}
+        </>
+        )}
+      </div>
     </header>
   );
 };

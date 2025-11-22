@@ -11,6 +11,7 @@ import BreadcrumbHeader from "../components/BreadcrumbHeader";
 import ChatWindow, { Message } from "../components/ChatWindow";
 import ChatInput from "../components/ChatInput";
 import { TreeCanvas } from "../components/TreeCanvas";
+import { getRootNodeId, chatWithNode, branchFromNode, getNode, mergeNodes, summarizeBranch } from "../lib/api";
 
 export default function ChatPage() {
   const [chats, setChats] = useState<Chat[]>([]);
@@ -21,6 +22,10 @@ export default function ChatPage() {
   const [editingTitleId, setEditingTitleId] = useState<string | null>(null);
   const [editingTitleValue, setEditingTitleValue] = useState("");
   const [isTreeView, setIsTreeView] = useState(false);
+  // Backend integration state: map frontend chats to backend node IDs
+  const [chatNodeMap, setChatNodeMap] = useState<Record<string, string>>({});
+  const [rootNodeId, setRootNodeId] = useState<string | null>(null);
+  const [apiError, setApiError] = useState<string | null>(null);
 
   useEffect(() => {
     if (chats.length === 0) {
@@ -32,6 +37,17 @@ export default function ChatPage() {
       };
       setChats([initialChat]);
       setActiveChatId(initialChatId);
+
+      // Resolve backend root node and map it to the initial chat
+      (async () => {
+        try {
+          const rid = await getRootNodeId();
+          setRootNodeId(rid);
+          setChatNodeMap((prev) => ({ ...prev, [initialChatId]: rid }));
+        } catch (e: any) {
+          setApiError(e?.message || "Failed to connect to backend");
+        }
+      })();
     }
   }, [chats.length]);
 
@@ -39,12 +55,31 @@ export default function ChatPage() {
     setIsTreeView((prev) => !prev);
   };
 
+  // Load messages when switching active chat if empty
+  useEffect(() => {
+    (async () => {
+      if (!activeChatId) return;
+      const nodeId = chatNodeMap[activeChatId];
+      const hasMessages = messages.some((m) => m.chatId === activeChatId);
+      if (!nodeId || hasMessages) return;
+      try {
+        const node = await getNode(nodeId);
+        const loaded: Message[] = node.messages
+          .filter((m) => m.role === "user" || m.role === "assistant")
+          .map((m) => ({ id: uuidv4(), chatId: activeChatId, role: m.role as "user"|"assistant", content: m.content }));
+        if (loaded.length) setMessages((prev) => [...prev, ...loaded]);
+      } catch {
+        // ignore
+      }
+    })();
+  }, [activeChatId, chatNodeMap, messages]);
+
   // Utility: get messages visible inside a layer (those whose parentId === layer.rootParentId)
   // const messagesForLayer = (layer: LayerType) =>
   //   messages.filter((m) => m.parentId === layer.rootParentId);
 
   // Send message inside active layer
-  const handleSend = () => {
+  const handleSend = async () => {
     if (input.trim() && activeChatId) {
       const userMessage: Message = {
         id: uuidv4(),
@@ -62,22 +97,51 @@ export default function ChatPage() {
 
       setMessages((prev) => [...prev, userMessage]);
 
-      setTimeout(() => {
+      // Look up or fallback to root node mapping
+      let nodeId = chatNodeMap[activeChatId] || rootNodeId;
+      if (!nodeId) {
+        try {
+          nodeId = await getRootNodeId();
+          setRootNodeId(nodeId);
+          setChatNodeMap((prev) => ({ ...prev, [activeChatId]: nodeId! }));
+        } catch (e: any) {
+          const assistantMessage: Message = {
+            id: uuidv4(),
+            chatId: activeChatId,
+            role: "assistant",
+            content: `Error: ${e?.message || "Failed to reach backend"}`,
+          };
+          setMessages((prev) => [...prev, assistantMessage]);
+          setInput("");
+          return;
+        }
+      }
+
+      try {
+        const reply = await chatWithNode(nodeId!, input);
         const assistantMessage: Message = {
           id: uuidv4(),
           chatId: activeChatId,
           role: "assistant",
-          content: `Mock response to: ${input}`,
+          content: reply,
         };
         setMessages((prev) => [...prev, assistantMessage]);
-      }, 500);
+      } catch (e: any) {
+        const assistantMessage: Message = {
+          id: uuidv4(),
+          chatId: activeChatId,
+          role: "assistant",
+          content: `Error: ${e?.message || "Chat failed"}`,
+        };
+        setMessages((prev) => [...prev, assistantMessage]);
+      }
 
       setInput("");
     }
   };
 
   // Send message from tree view
-  const handleTreeSend = (chatId: string, content: string) => {
+  const handleTreeSend = async (chatId: string, content: string) => {
     if (content.trim()) {
       const userMessage: Message = {
         id: uuidv4(),
@@ -95,15 +159,42 @@ export default function ChatPage() {
 
       setMessages((prev) => [...prev, userMessage]);
 
-      setTimeout(() => {
+      let nodeId = chatNodeMap[chatId] || rootNodeId;
+      if (!nodeId) {
+        try {
+          nodeId = await getRootNodeId();
+          setRootNodeId(nodeId);
+          setChatNodeMap((prev) => ({ ...prev, [chatId]: nodeId! }));
+        } catch (e: any) {
+          const assistantMessage: Message = {
+            id: uuidv4(),
+            chatId,
+            role: "assistant",
+            content: `Error: ${e?.message || "Failed to reach backend"}`,
+          };
+          setMessages((prev) => [...prev, assistantMessage]);
+          return;
+        }
+      }
+
+      try {
+        const reply = await chatWithNode(nodeId!, content);
         const assistantMessage: Message = {
           id: uuidv4(),
-          chatId: chatId,
+          chatId,
           role: "assistant",
-          content: `Mock response to: ${content}`,
+          content: reply,
         };
         setMessages((prev) => [...prev, assistantMessage]);
-      }, 500);
+      } catch (e: any) {
+        const assistantMessage: Message = {
+          id: uuidv4(),
+          chatId,
+          role: "assistant",
+          content: `Error: ${e?.message || "Chat failed"}`,
+        };
+        setMessages((prev) => [...prev, assistantMessage]);
+      }
     }
   };
 
@@ -120,39 +211,78 @@ export default function ChatPage() {
     };
     setChats((prev) => [...prev, newChat]);
 
-    const userMessage: Message = {
-      id: uuidv4(),
-      chatId: newChatId,
-      role: "user",
-      content: selectedText,
-    };
-    setMessages((prev) => [...prev, userMessage]);
+    (async () => {
+      try {
+        // Map parent chat -> backend node
+        let parentNodeId = chatNodeMap[sourceMessage.chatId] || rootNodeId;
+        if (!parentNodeId) {
+          parentNodeId = await getRootNodeId();
+          setRootNodeId(parentNodeId);
+        }
+        // Create backend branch
+        const branchId = await branchFromNode(parentNodeId!, { carry_messages: true });
+        setChatNodeMap((prev) => ({ ...prev, [newChatId]: branchId }));
 
-    setTimeout(() => {
-      const assistantMessage: Message = {
-        id: uuidv4(),
-        chatId: newChatId,
-        role: "assistant",
-        content: `Mock response to: ${selectedText}`,
-      };
-      setMessages((prev) => [...prev, assistantMessage]);
-    }, 500);
+        // Add the user's selected text to the branch and get AI reply
+        const userMessage: Message = {
+          id: uuidv4(),
+          chatId: newChatId,
+          role: "user",
+          content: selectedText,
+        };
+        setMessages((prev) => [...prev, userMessage]);
 
-    setActiveChatId(newChatId);
-    setInput("");
+        const reply = await chatWithNode(branchId, selectedText);
+        const assistantMessage: Message = {
+          id: uuidv4(),
+          chatId: newChatId,
+          role: "assistant",
+          content: reply,
+        };
+        setMessages((prev) => [...prev, assistantMessage]);
+      } catch (e: any) {
+        const assistantMessage: Message = {
+          id: uuidv4(),
+          chatId: newChatId,
+          role: "assistant",
+          content: `Error: ${e?.message || "Branch/chat failed"}`,
+        };
+        setMessages((prev) => [...prev, assistantMessage]);
+      } finally {
+        setActiveChatId(newChatId);
+        setInput("");
+      }
+    })();
   };
 
-  const handleMerge = () => {
+  const handleMerge = async () => {
     const chatToMerge = activeChat;
     if (!chatToMerge || !chatToMerge.parentId) return;
 
     const parentId = chatToMerge.parentId;
     const messagesToMerge = messages.filter((m) => m.chatId === chatToMerge.id);
 
-    setMessages((prev) => [
-      ...prev.filter((m) => m.chatId !== chatToMerge.id),
-      ...messagesToMerge.map((m) => ({ ...m, chatId: parentId })),
-    ]);
+    const sourceNode = chatNodeMap[chatToMerge.id];
+    const targetNode = chatNodeMap[parentId];
+    if (sourceNode && targetNode) {
+      try {
+        await mergeNodes(targetNode, sourceNode);
+        const node = await getNode(targetNode);
+        const loaded: Message[] = node.messages
+          .filter((m) => m.role === "user" || m.role === "assistant")
+          .map((m) => ({ id: uuidv4(), chatId: parentId, role: m.role as "user"|"assistant", content: m.content }));
+        setMessages((prev) => [
+          ...prev.filter((m) => m.chatId !== parentId && m.chatId !== chatToMerge.id),
+          ...loaded,
+        ]);
+      } catch {
+        // Fallback to local merge
+        setMessages((prev) => [
+          ...prev.filter((m) => m.chatId !== chatToMerge.id),
+          ...messagesToMerge.map((m) => ({ ...m, chatId: parentId })),
+        ]);
+      }
+    }
     setChats((prev) => prev.filter((c) => c.id !== chatToMerge.id));
     setActiveChatId(parentId);
   };
@@ -172,6 +302,41 @@ export default function ChatPage() {
     );
     setChats((prev) => prev.filter((c) => !allIdsToDelete.includes(c.id)));
     setActiveChatId(parentId);
+  };
+
+  const handleSummarize = async () => {
+    const chatToSummarize = activeChat;
+    if (!chatToSummarize) return;
+    const sourceNode = chatNodeMap[chatToSummarize.id] || rootNodeId;
+    if (!sourceNode) return;
+
+    const newChatId = uuidv4();
+    const newChat: Chat = {
+      id: newChatId,
+      parentId: chatToSummarize.id,
+      title: `Summary of ${chatToSummarize.title}`,
+    };
+    setChats((prev) => [...prev, newChat]);
+
+    try {
+      const branchId = await summarizeBranch(sourceNode);
+      setChatNodeMap((prev) => ({ ...prev, [newChatId]: branchId }));
+      const node = await getNode(branchId);
+      const loaded: Message[] = node.messages
+        .filter((m) => m.role === "user" || m.role === "assistant")
+        .map((m) => ({ id: uuidv4(), chatId: newChatId, role: m.role as "user"|"assistant", content: m.content }));
+      if (loaded.length) setMessages((prev) => [...prev, ...loaded]);
+    } catch (e: any) {
+      const assistantMessage: Message = {
+        id: uuidv4(),
+        chatId: newChatId,
+        role: "assistant",
+        content: `Error: ${e?.message || "Summarize failed"}`,
+      };
+      setMessages((prev) => [...prev, assistantMessage]);
+    } finally {
+      setActiveChatId(newChatId);
+    }
   };
 
   const startEditingTitle = (chatId: string, currentTitle: string) => {
@@ -246,6 +411,7 @@ export default function ChatPage() {
             onMerge={handleMerge}
             onPrune={handlePrune}
             isRootChat={isRootChat}
+            onSummarize={handleSummarize}
           />
 
           <BreadcrumbHeader
