@@ -11,7 +11,7 @@ export interface Message {
 
 export interface Layer {
   id: string;
-  rootParentId: string | null; // which branch this layer is rooted at (null = primary)
+  rootParentId: string | null; // Parent chat ID (null = primary/root chat)
   x: number;
   y: number;
   width: number;
@@ -19,6 +19,7 @@ export interface Layer {
   z: number;
   title: string;
   color: string; // Color for this branch
+  branchedFromMessageId?: string; // ID of the message that created this branch
 }
 
 export interface BranchColor {

@@ -10,7 +10,7 @@ import TitleHeader, { Chat } from "../components/TitleHeader";
 import BreadcrumbHeader from "../components/BreadcrumbHeader";
 import ChatWindow, { Message } from "../components/ChatWindow";
 import ChatInput from "../components/ChatInput";
-import { Layer as LayerType } from "../components/types";
+import { TreeCanvas } from "../components/TreeCanvas";
 
 export default function ChatPage() {
   const [chats, setChats] = useState<Chat[]>([]);
@@ -76,6 +76,37 @@ export default function ChatPage() {
     }
   };
 
+  // Send message from tree view
+  const handleTreeSend = (chatId: string, content: string) => {
+    if (content.trim()) {
+      const userMessage: Message = {
+        id: uuidv4(),
+        chatId: chatId,
+        role: "user",
+        content: content,
+      };
+
+      const currentMessages = messages.filter((m) => m.chatId === chatId);
+      if (currentMessages.length === 0) {
+        setChats(
+          chats.map((c) => (c.id === chatId ? { ...c, title: content } : c))
+        );
+      }
+
+      setMessages((prev) => [...prev, userMessage]);
+
+      setTimeout(() => {
+        const assistantMessage: Message = {
+          id: uuidv4(),
+          chatId: chatId,
+          role: "assistant",
+          content: `Mock response to: ${content}`,
+        };
+        setMessages((prev) => [...prev, assistantMessage]);
+      }, 500);
+    }
+  };
+
   const handleBranchFromSelection = (
     sourceMessage: Message,
     selectedText: string
@@ -85,6 +116,7 @@ export default function ChatPage() {
       id: newChatId,
       parentId: sourceMessage.chatId,
       title: selectedText.substring(0, 40) + "...",
+      branchedFromMessageId: sourceMessage.id,
     };
     setChats((prev) => [...prev, newChat]);
 
@@ -232,6 +264,43 @@ export default function ChatPage() {
             onSend={handleSend}
           />
         </div>
+
+        {/* Tree View Overlay */}
+        {isTreeView && (
+          <div className="absolute inset-0 z-50 bg-gradient-to-br from-white/98 via-blue-50/95 to-purple-50/95 backdrop-blur-md">
+            <TreeCanvas
+              chats={chats}
+              messages={messages}
+              activeChatId={activeChatId}
+              onChatSelect={(chatId) => {
+                setActiveChatId(chatId);
+                setIsTreeView(false); // Close tree view when clicking a chat
+              }}
+              onBranchFromSelection={handleBranchFromSelection}
+              onSendMessage={handleTreeSend}
+            />
+            {/* Close button */}
+            <button
+              onClick={() => setIsTreeView(false)}
+              className="absolute top-4 left-4 z-50 p-3 bg-gradient-to-br from-red-500 to-pink-600 rounded-full shadow-2xl hover:from-red-600 hover:to-pink-700 transition-all transform hover:scale-110 group"
+              title="Close tree view"
+            >
+              <svg
+                className="w-6 h-6 text-white group-hover:rotate-90 transition-transform duration-300"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                strokeWidth={3}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

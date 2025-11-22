@@ -6,6 +6,7 @@ export interface Chat {
   id: string;
   parentId: string | null;
   title: string;
+  branchedFromMessageId?: string; // ID of the message that created this branch
 }
 
 interface TitleHeaderProps {

@@ -19,13 +19,8 @@ export const findParentLayer = (
   messages: Message[]
 ): Layer | null => {
   if (!layer.rootParentId) return null;
-  // Find which layer contains the message that this layer branched from
-  return (
-    layers.find((l) => {
-      const msgs = messages.filter((m) => m.parentId === l.rootParentId);
-      return msgs.some((m) => m.id === layer.rootParentId);
-    }) || null
-  );
+  // rootParentId is the parent chat's ID, so just find the layer with that ID
+  return layers.find((l) => l.id === layer.rootParentId) || null;
 };
 
 /**

@@ -19,85 +19,29 @@ interface ConnectionArrowsProps {
 }
 
 /**
- * Calculate arrow path between parent message and child layer
+ * Calculate arrow path between parent layer and child layer
  */
 const getArrowPath = (
   parent: Layer,
-  child: Layer,
-  branchedMessageId: string,
-  messageRefs: Map<string, HTMLDivElement>,
-  containerRef: HTMLDivElement | null,
-  zoom: number
-): { path: string; markerEnd: string } => {
-  // Try to get the position of the specific message that was branched from
-  const messageElement = messageRefs.get(branchedMessageId);
+  child: Layer
+): string => {
+  // Start from the right center of the parent
+  const startX = parent.x + parent.width;
+  const startY = parent.y + parent.height / 2;
 
-  let startX, startY;
+  // End at the left center of the child
+  const endX = child.x;
+  const endY = child.y + child.height / 2;
 
-  if (messageElement) {
-    // Use the specific message position
-    const rect = messageElement.getBoundingClientRect();
-    const containerRect = containerRef?.getBoundingClientRect();
+  // Create a smooth curved path using cubic bezier
+  const controlPoint1X = startX + (endX - startX) * 0.5;
+  const controlPoint1Y = startY;
+  const controlPoint2X = startX + (endX - startX) * 0.5;
+  const controlPoint2Y = endY;
 
-    if (containerRect) {
-      // Calculate position relative to the scaled canvas
-      const scrollLeft = containerRef?.scrollLeft || 0;
-      const scrollTop = containerRef?.scrollTop || 0;
+  const path = `M ${startX} ${startY} C ${controlPoint1X} ${controlPoint1Y}, ${controlPoint2X} ${controlPoint2Y}, ${endX} ${endY}`;
 
-      // Get message position in canvas coordinates
-      startX =
-        (rect.left - containerRect.left + scrollLeft) / zoom +
-        rect.width / (2 * zoom);
-      startY =
-        (rect.top - containerRect.top + scrollTop) / zoom +
-        rect.height / (2 * zoom);
-    } else {
-      // Fallback to parent layer center
-      startX = parent.x + parent.width / 2;
-      startY = parent.y + parent.height / 2;
-    }
-  } else {
-    // Fallback to parent layer center if message ref not found
-    startX = parent.x + parent.width / 2;
-    startY = parent.y + parent.height / 2;
-  }
-
-  // Calculate child layer center for end point
-  const childCenterX = child.x + child.width / 2;
-  const childCenterY = child.y + child.height / 2;
-
-  // Determine which edge of child layer to connect to
-  let endX, endY;
-  const dx = childCenterX - startX;
-  const dy = childCenterY - startY;
-
-  if (Math.abs(dx) > Math.abs(dy)) {
-    // More horizontal
-    if (dx > 0) {
-      endX = child.x;
-      endY = childCenterY;
-    } else {
-      endX = child.x + child.width;
-      endY = childCenterY;
-    }
-  } else {
-    // More vertical
-    if (dy > 0) {
-      endX = childCenterX;
-      endY = child.y;
-    } else {
-      endX = childCenterX;
-      endY = child.y + child.height;
-    }
-  }
-
-  // Create a curved path using quadratic bezier
-  const midX = (startX + endX) / 2;
-  const midY = (startY + endY) / 2;
-
-  const path = `M ${startX} ${startY} Q ${midX} ${midY} ${endX} ${endY}`;
-
-  return { path, markerEnd: "url(#arrowhead)" };
+  return path;
 };
 
 export const ConnectionArrows: React.FC<ConnectionArrowsProps> = ({
@@ -117,45 +61,73 @@ export const ConnectionArrows: React.FC<ConnectionArrowsProps> = ({
       }}
     >
       <defs>
-        <marker
-          id="arrowhead"
-          markerWidth="10"
-          markerHeight="10"
-          refX="9"
-          refY="3"
-          orient="auto"
-          className="fill-blue-500 dark:fill-blue-400"
-        >
-          <polygon
-            points="0 0, 10 3, 0 6"
-            className="fill-blue-500 dark:fill-blue-400"
-          />
-        </marker>
+        {/* Create filters for glow effects */}
+        <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+          <feMerge>
+            <feMergeNode in="coloredBlur"/>
+            <feMergeNode in="SourceGraphic"/>
+          </feMerge>
+        </filter>
+
+        {/* Create a colored marker for each layer */}
+        {layers.map((layer) => {
+          if (!layer.rootParentId) return null;
+          const layerColor = getLayerColor(layer);
+          const strokeColor = layerColor ? layerColor.stroke : "rgb(59, 130, 246)";
+          return (
+            <marker
+              key={`marker-${layer.id}`}
+              id={`arrowhead-${layer.id}`}
+              markerWidth="12"
+              markerHeight="12"
+              refX="11"
+              refY="6"
+              orient="auto"
+            >
+              <path
+                d="M 2 2 L 10 6 L 2 10 L 4 6 Z"
+                fill={strokeColor}
+                stroke={strokeColor}
+                strokeWidth="1"
+                strokeLinejoin="round"
+              />
+            </marker>
+          );
+        })}
       </defs>
+
       {/* Draw arrows from parent to child layers */}
       {layers.map((layer) => {
         const parentLayer = findParentLayer(layer, layers, messages);
         if (!parentLayer || !layer.rootParentId) return null;
-        const { path, markerEnd } = getArrowPath(
-          parentLayer,
-          layer,
-          layer.rootParentId,
-          messageRefs.current,
-          containerRef.current,
-          zoom
-        );
+
+        const path = getArrowPath(parentLayer, layer);
         const layerColor = getLayerColor(layer);
         const strokeColor = layerColor ? layerColor.stroke : "rgb(59, 130, 246)";
+
         return (
-          <path
-            key={`arrow-${layer.id}`}
-            d={path}
-            stroke={strokeColor}
-            strokeWidth="2"
-            fill="none"
-            markerEnd={markerEnd}
-            opacity="0.6"
-          />
+          <g key={`arrow-${layer.id}`}>
+            {/* Shadow/glow layer */}
+            <path
+              d={path}
+              stroke={strokeColor}
+              strokeWidth="6"
+              fill="none"
+              opacity="0.2"
+              filter="url(#glow)"
+            />
+            {/* Main arrow */}
+            <path
+              d={path}
+              stroke={strokeColor}
+              strokeWidth="3"
+              fill="none"
+              markerEnd={`url(#arrowhead-${layer.id})`}
+              opacity="0.9"
+              strokeLinecap="round"
+            />
+          </g>
         );
       })}
     </svg>
