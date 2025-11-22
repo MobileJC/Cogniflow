@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Chat } from './TitleHeader'; // Import Chat interface
 import ContextMenu from './ContextMenu'; // Import the new ContextMenu
+import Markdown from './Markdown';
 
 export interface Message {
   id: string;
@@ -91,7 +92,11 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ messages, chats, onBranchFromSe
                     </button>
                 )}
                 <div className={`p-3 rounded-lg max-w-lg ${message.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>
-                    <p>{message.content}</p>
+                    {message.role === 'assistant' ? (
+                      <Markdown>{message.content}</Markdown>
+                    ) : (
+                      <p>{message.content}</p>
+                    )}
                 </div>
                 {message.role === 'assistant' && branchedChats.length > 0 && (
                     <button 
