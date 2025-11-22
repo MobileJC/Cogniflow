@@ -11,7 +11,14 @@ import BreadcrumbHeader from "../components/BreadcrumbHeader";
 import ChatWindow, { Message } from "../components/ChatWindow";
 import ChatInput from "../components/ChatInput";
 import { TreeCanvas } from "../components/TreeCanvas";
-import { getRootNodeId, chatWithNode, branchFromNode, getNode, mergeNodes, summarizeBranch } from "../lib/api";
+import {
+  getRootNodeId,
+  chatWithNode,
+  branchFromNode,
+  getNode,
+  mergeNodes,
+  summarizeBranch,
+} from "../lib/api";
 
 export default function ChatPage() {
   const [chats, setChats] = useState<Chat[]>([]);
@@ -68,7 +75,12 @@ export default function ChatPage() {
         const node = await getNode(nodeId);
         const loaded: Message[] = node.messages
           .filter((m) => m.role === "user" || m.role === "assistant")
-          .map((m) => ({ id: uuidv4(), chatId: activeChatId, role: m.role as "user"|"assistant", content: m.content }));
+          .map((m) => ({
+            id: uuidv4(),
+            chatId: activeChatId,
+            role: m.role as "user" | "assistant",
+            content: m.content,
+          }));
         if (loaded.length) setMessages((prev) => [...prev, ...loaded]);
       } catch {
         // ignore
@@ -219,7 +231,9 @@ export default function ChatPage() {
           setRootNodeId(parentNodeId);
         }
         // Create backend branch
-        const branchId = await branchFromNode(parentNodeId!, { carry_messages: true });
+        const branchId = await branchFromNode(parentNodeId!, {
+          carry_messages: true,
+        });
         setChatNodeMap((prev) => ({ ...prev, [newChatId]: branchId }));
 
         // Add the user's selected text to the branch and get AI reply
@@ -269,9 +283,16 @@ export default function ChatPage() {
         const node = await getNode(targetNode);
         const loaded: Message[] = node.messages
           .filter((m) => m.role === "user" || m.role === "assistant")
-          .map((m) => ({ id: uuidv4(), chatId: parentId, role: m.role as "user"|"assistant", content: m.content }));
+          .map((m) => ({
+            id: uuidv4(),
+            chatId: parentId,
+            role: m.role as "user" | "assistant",
+            content: m.content,
+          }));
         setMessages((prev) => [
-          ...prev.filter((m) => m.chatId !== parentId && m.chatId !== chatToMerge.id),
+          ...prev.filter(
+            (m) => m.chatId !== parentId && m.chatId !== chatToMerge.id
+          ),
           ...loaded,
         ]);
       } catch {
@@ -289,9 +310,7 @@ export default function ChatPage() {
         .filter((c) => c.id !== chatToMerge.id) // Remove the merged chat
         .map((c) =>
           // Reconnect sub-branches to the parent
-          c.parentId === chatToMerge.id
-            ? { ...c, parentId: parentId }
-            : c
+          c.parentId === chatToMerge.id ? { ...c, parentId: parentId } : c
         )
     );
 
@@ -335,7 +354,12 @@ export default function ChatPage() {
       const node = await getNode(branchId);
       const loaded: Message[] = node.messages
         .filter((m) => m.role === "user" || m.role === "assistant")
-        .map((m) => ({ id: uuidv4(), chatId: newChatId, role: m.role as "user"|"assistant", content: m.content }));
+        .map((m) => ({
+          id: uuidv4(),
+          chatId: newChatId,
+          role: m.role as "user" | "assistant",
+          content: m.content,
+        }));
       if (loaded.length) setMessages((prev) => [...prev, ...loaded]);
     } catch (e: any) {
       const assistantMessage: Message = {
@@ -393,7 +417,7 @@ export default function ChatPage() {
 
   return (
     <div className="flex flex-col h-screen bg-background text-foreground">
-      <MainHeader title="Trinity Tinder" />
+      <MainHeader title="Cogniflow" />
 
       <div className="flex flex-1 overflow-hidden">
         <Sidebar
@@ -484,4 +508,3 @@ export default function ChatPage() {
     </div>
   );
 }
-
