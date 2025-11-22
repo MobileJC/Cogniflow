@@ -19,6 +19,7 @@ export default function ChatPage() {
   const [isSidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [editingTitleId, setEditingTitleId] = useState<string | null>(null);
   const [editingTitleValue, setEditingTitleValue] = useState("");
+  const [isTreeView, setIsTreeView] = useState(false);
 
   useEffect(() => {
     if (chats.length === 0) {
@@ -28,6 +29,10 @@ export default function ChatPage() {
       setActiveChatId(initialChatId);
     }
   }, [chats.length]);
+
+  const handleToggleTreeView = () => {
+    setIsTreeView(prev => !prev);
+  };
 
   const handleSend = () => {
     if (input.trim() && activeChatId) {
@@ -59,15 +64,60 @@ export default function ChatPage() {
     }
   };
 
-  const handleBranch = (sourceMessage: Message) => {
+  const handleBranchFromSelection = (sourceMessage: Message, selectedText: string) => {
     const newChatId = uuidv4();
     const newChat: Chat = {
       id: newChatId,
       parentId: sourceMessage.chatId,
-      title: `Branch from "${sourceMessage.content.substring(0, 20)}..."`
+      title: selectedText.substring(0, 40) + "..."
     };
     setChats(prev => [...prev, newChat]);
+
+    const userMessage: Message = {
+      id: uuidv4(),
+      chatId: newChatId,
+      role: "user",
+      content: selectedText,
+    };
+    setMessages(prev => [...prev, userMessage]);
+
+    setTimeout(() => {
+      const assistantMessage: Message = {
+        id: uuidv4(),
+        chatId: newChatId,
+        role: "assistant",
+        content: `Mock response to: ${selectedText}`,
+      };
+      setMessages(prev => [...prev, assistantMessage]);
+    }, 500);
+
     setActiveChatId(newChatId);
+    setInput("");
+  };
+
+  const handleMerge = () => {
+    const chatToMerge = activeChat;
+    if (!chatToMerge || !chatToMerge.parentId) return;
+    
+    const parentId = chatToMerge.parentId;
+    const messagesToMerge = messages.filter(m => m.chatId === chatToMerge.id);
+    
+    setMessages(prev => [...prev.filter(m => m.chatId !== chatToMerge.id), ...messagesToMerge.map(m => ({ ...m, chatId: parentId }))]);
+    setChats(prev => prev.filter(c => c.id !== chatToMerge.id));
+    setActiveChatId(parentId);
+  };
+
+  const handlePrune = () => {
+    const chatToPrune = activeChat;
+    if (!chatToPrune || !chatToPrune.parentId) return;
+
+    const parentId = chatToPrune.parentId;
+    const childIds = chats.filter(c => c.parentId === chatToPrune.id).map(c => c.id);
+    const allIdsToDelete = [chatToPrune.id, ...childIds];
+
+    setMessages(prev => prev.filter(m => !allIdsToDelete.includes(m.chatId)));
+    setChats(prev => prev.filter(c => !allIdsToDelete.includes(c.id)));
+    setActiveChatId(parentId);
   };
   
   const startEditingTitle = (chatId: string, currentTitle: string) => {
@@ -105,9 +155,10 @@ export default function ChatPage() {
 
   const visibleMessages = messages.filter((msg) => msg.chatId === activeChatId);
   const activeChat = chats.find(c => c.id === activeChatId);
+  const isRootChat = activeChat ? activeChat.parentId === null : true;
 
   return (
-    <div className="flex flex-col h-screen bg-white dark:bg-gray-900">
+    <div className="flex flex-col h-screen bg-background text-foreground">
       <MainHeader title="Trinity Tinder" />
 
       <div className="flex flex-1 overflow-hidden">
@@ -117,6 +168,7 @@ export default function ChatPage() {
           chats={chats}
           activeChatId={activeChatId}
           onChatClick={setActiveChatId}
+          onToggleTreeView={handleToggleTreeView}
         />
         
         <OverlappingPages breadcrumbs={breadcrumbs} onPageClick={setActiveChatId} />
@@ -130,11 +182,14 @@ export default function ChatPage() {
             onStartEditing={startEditingTitle}
             onSave={saveTitle}
             onKeyDown={handleTitleKeyDown}
+            onMerge={handleMerge}
+            onPrune={handlePrune}
+            isRootChat={isRootChat}
           />
 
           <BreadcrumbHeader breadcrumbs={breadcrumbs} onBreadcrumbClick={setActiveChatId} />
 
-          <ChatWindow messages={visibleMessages} onBranch={handleBranch} />
+          <ChatWindow messages={visibleMessages} onBranchFromSelection={handleBranchFromSelection} />
 
           <ChatInput input={input} onInputChange={setInput} onSend={handleSend} />
         </div>
