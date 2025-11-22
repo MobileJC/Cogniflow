@@ -5,6 +5,7 @@ import React from 'react';
 export interface Chat {
   id: string;
   parentId: string | null;
+  sourceMessageId?: string; // The ID of the message this chat branched from
   title: string;
   branchedFromMessageId?: string; // ID of the message that created this branch
 }

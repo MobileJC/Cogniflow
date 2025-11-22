@@ -115,8 +115,8 @@ export default function ChatPage() {
     const newChat: Chat = {
       id: newChatId,
       parentId: sourceMessage.chatId,
+      sourceMessageId: sourceMessage.id,
       title: selectedText.substring(0, 40) + "...",
-      branchedFromMessageId: sourceMessage.id,
     };
     setChats((prev) => [...prev, newChat]);
 
@@ -255,7 +255,9 @@ export default function ChatPage() {
 
           <ChatWindow
             messages={visibleMessages}
+            chats={chats}
             onBranchFromSelection={handleBranchFromSelection}
+            onChatClick={setActiveChatId}
           />
 
           <ChatInput

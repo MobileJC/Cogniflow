@@ -1,5 +1,0 @@
-fastapi
-uvicorn[standard]
-pydantic
-# For AI integration later, for now we will use mock responses
-# openai
