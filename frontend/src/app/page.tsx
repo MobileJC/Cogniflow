@@ -11,6 +11,7 @@ import BreadcrumbHeader from "../components/BreadcrumbHeader";
 import ChatWindow, { Message } from "../components/ChatWindow";
 import ChatInput from "../components/ChatInput";
 import { TreeCanvas } from "../components/TreeCanvas";
+import { sendChatMessage, mergeChatNodes } from "../lib/api/chatService";
 
 export default function ChatPage() {
   const [chats, setChats] = useState<Chat[]>([]);
@@ -21,8 +22,13 @@ export default function ChatPage() {
   const [editingTitleId, setEditingTitleId] = useState<string | null>(null);
   const [editingTitleValue, setEditingTitleValue] = useState("");
   const [isTreeView, setIsTreeView] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [backendNodeId, setBackendNodeId] = useState<string | null>(null); // Store backend node_id
 
   useEffect(() => {
+    // Only create initial chat if there are no chats at all
+    // Use a function to ensure this only runs once on mount
     if (chats.length === 0) {
       const initialChatId = uuidv4();
       const initialChat: Chat = {
@@ -33,7 +39,7 @@ export default function ChatPage() {
       setChats([initialChat]);
       setActiveChatId(initialChatId);
     }
-  }, [chats.length]);
+  }, []); // Empty dependency array - only run once on mount
 
   const handleToggleTreeView = () => {
     setIsTreeView((prev) => !prev);
@@ -44,73 +50,167 @@ export default function ChatPage() {
   //   messages.filter((m) => m.parentId === layer.rootParentId);
 
   // Send message inside active layer
-  const handleSend = () => {
-    if (input.trim() && activeChatId) {
-      const userMessage: Message = {
-        id: uuidv4(),
-        chatId: activeChatId,
-        role: "user",
-        content: input,
-      };
+  const handleSend = async () => {
+    if (!input.trim() || !activeChatId || isLoading) return;
 
-      const currentMessages = messages.filter((m) => m.chatId === activeChatId);
-      if (currentMessages.length === 0) {
-        setChats(
-          chats.map((c) => (c.id === activeChatId ? { ...c, title: input } : c))
-        );
+    const userMessageContent = input.trim();
+    const userMessage: Message = {
+      id: uuidv4(),
+      chatId: activeChatId,
+      role: "user",
+      content: userMessageContent,
+    };
+
+    // Update chat title if this is the first message
+    const currentMessages = messages.filter((m) => m.chatId === activeChatId);
+    if (currentMessages.length === 0) {
+      setChats(
+        chats.map((c) =>
+          c.id === activeChatId
+            ? { ...c, title: userMessageContent.substring(0, 40) }
+            : c
+        )
+      );
+    }
+
+    // Add user message to UI
+    setMessages((prev) => [...prev, userMessage]);
+    setInput("");
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      // Get conversation history for context
+      const conversationHistory = currentMessages.map((msg) => ({
+        role: msg.role,
+        content: msg.content,
+      }));
+
+      // Add the current user message to history
+      conversationHistory.push({
+        role: "user",
+        content: userMessageContent,
+      });
+
+      // Call the backend API
+      // Always use backendNodeId for all chats since backend doesn't track frontend branches
+      const response = await sendChatMessage(
+        userMessageContent,
+        backendNodeId || undefined,
+        conversationHistory
+      );
+
+      // Store backend node_id for future requests
+      if (response.chatId) {
+        setBackendNodeId(response.chatId);
       }
 
-      setMessages((prev) => [...prev, userMessage]);
+      // Add assistant response to UI
+      const assistantMessage: Message = {
+        id: response.messageId || uuidv4(),
+        chatId: activeChatId,
+        role: "assistant",
+        content: response.response,
+      };
 
-      setTimeout(() => {
-        const assistantMessage: Message = {
-          id: uuidv4(),
-          chatId: activeChatId,
-          role: "assistant",
-          content: `Mock response to: ${input}`,
-        };
-        setMessages((prev) => [...prev, assistantMessage]);
-      }, 500);
+      setMessages((prev) => [...prev, assistantMessage]);
+    } catch (err: any) {
+      console.error("Error sending message:", err);
+      setError(err.message || "Failed to send message. Please try again.");
 
-      setInput("");
+      // Add error message to chat
+      const errorMessage: Message = {
+        id: uuidv4(),
+        chatId: activeChatId,
+        role: "assistant",
+        content: `❌ Error: ${err.message || "Failed to get response from server"}`,
+      };
+      setMessages((prev) => [...prev, errorMessage]);
+    } finally {
+      setIsLoading(false);
     }
   };
 
   // Send message from tree view
-  const handleTreeSend = (chatId: string, content: string) => {
-    if (content.trim()) {
-      const userMessage: Message = {
-        id: uuidv4(),
-        chatId: chatId,
+  const handleTreeSend = async (chatId: string, content: string) => {
+    if (!content.trim() || isLoading) return;
+
+    const userMessage: Message = {
+      id: uuidv4(),
+      chatId: chatId,
+      role: "user",
+      content: content,
+    };
+
+    const currentMessages = messages.filter((m) => m.chatId === chatId);
+    if (currentMessages.length === 0) {
+      setChats(
+        chats.map((c) =>
+          c.id === chatId ? { ...c, title: content.substring(0, 40) } : c
+        )
+      );
+    }
+
+    setMessages((prev) => [...prev, userMessage]);
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      // Get conversation history for context
+      const conversationHistory = currentMessages.map((msg) => ({
+        role: msg.role,
+        content: msg.content,
+      }));
+
+      conversationHistory.push({
         role: "user",
         content: content,
-      };
+      });
 
-      const currentMessages = messages.filter((m) => m.chatId === chatId);
-      if (currentMessages.length === 0) {
-        setChats(
-          chats.map((c) => (c.id === chatId ? { ...c, title: content } : c))
-        );
+      // Call the backend API
+      // Always use backendNodeId for all chats since backend doesn't track frontend branches
+      const response = await sendChatMessage(
+        content,
+        backendNodeId || undefined,
+        conversationHistory
+      );
+
+      // Store backend node_id for future requests
+      if (response.chatId) {
+        setBackendNodeId(response.chatId);
       }
 
-      setMessages((prev) => [...prev, userMessage]);
+      // Add assistant response to UI
+      const assistantMessage: Message = {
+        id: response.messageId || uuidv4(),
+        chatId: chatId,
+        role: "assistant",
+        content: response.response,
+      };
 
-      setTimeout(() => {
-        const assistantMessage: Message = {
-          id: uuidv4(),
-          chatId: chatId,
-          role: "assistant",
-          content: `Mock response to: ${content}`,
-        };
-        setMessages((prev) => [...prev, assistantMessage]);
-      }, 500);
+      setMessages((prev) => [...prev, assistantMessage]);
+    } catch (err: any) {
+      console.error("Error sending message:", err);
+
+      // Add error message to chat
+      const errorMessage: Message = {
+        id: uuidv4(),
+        chatId: chatId,
+        role: "assistant",
+        content: `❌ Error: ${err.message || "Failed to get response from server"}`,
+      };
+      setMessages((prev) => [...prev, errorMessage]);
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleBranchFromSelection = (
+  const handleBranchFromSelection = async (
     sourceMessage: Message,
     selectedText: string
   ) => {
+    if (isLoading) return;
+
     const newChatId = uuidv4();
     const newChat: Chat = {
       id: newChatId,
@@ -128,33 +228,78 @@ export default function ChatPage() {
     };
     setMessages((prev) => [...prev, userMessage]);
 
-    setTimeout(() => {
+    setActiveChatId(newChatId);
+    setInput("");
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      // Call backend to get response for the branched conversation
+      // Use the backend root node ID since the backend doesn't track frontend branches
+      const response = await sendChatMessage(
+        selectedText,
+        backendNodeId || undefined,
+        [{ role: "user", content: selectedText }]
+      );
+
+      // Add assistant response to UI
       const assistantMessage: Message = {
+        id: response.messageId || uuidv4(),
+        chatId: newChatId,
+        role: "assistant",
+        content: response.response,
+      };
+      setMessages((prev) => [...prev, assistantMessage]);
+    } catch (err: any) {
+      console.error("Error sending branch message:", err);
+
+      // Add error message to chat
+      const errorMessage: Message = {
         id: uuidv4(),
         chatId: newChatId,
         role: "assistant",
-        content: `Mock response to: ${selectedText}`,
+        content: `❌ Error: ${err.message || "Failed to get response from server"}`,
       };
-      setMessages((prev) => [...prev, assistantMessage]);
-    }, 500);
-
-    setActiveChatId(newChatId);
-    setInput("");
+      setMessages((prev) => [...prev, errorMessage]);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleMerge = () => {
+  const handleMerge = async () => {
     const chatToMerge = activeChat;
     if (!chatToMerge || !chatToMerge.parentId) return;
 
     const parentId = chatToMerge.parentId;
     const messagesToMerge = messages.filter((m) => m.chatId === chatToMerge.id);
 
+    // Merge messages to parent
     setMessages((prev) => [
       ...prev.filter((m) => m.chatId !== chatToMerge.id),
       ...messagesToMerge.map((m) => ({ ...m, chatId: parentId })),
     ]);
-    setChats((prev) => prev.filter((c) => c.id !== chatToMerge.id));
+
+    // Reconnect sub-branches to the parent node (preserve them)
+    setChats((prev) =>
+      prev
+        .filter((c) => c.id !== chatToMerge.id) // Remove the merged chat
+        .map((c) =>
+          // Reconnect sub-branches to the parent
+          c.parentId === chatToMerge.id
+            ? { ...c, parentId: parentId }
+            : c
+        )
+    );
+
     setActiveChatId(parentId);
+
+    // Optional: Call backend merge API (though backend doesn't track frontend branches)
+    try {
+      await mergeChatNodes(backendNodeId || parentId, chatToMerge.id);
+    } catch (err) {
+      console.error("Backend merge failed (non-critical):", err);
+      // Continue even if backend merge fails since frontend branching is independent
+    }
   };
 
   const handlePrune = () => {
@@ -264,6 +409,7 @@ export default function ChatPage() {
             input={input}
             onInputChange={setInput}
             onSend={handleSend}
+            isLoading={isLoading}
           />
         </div>
 
