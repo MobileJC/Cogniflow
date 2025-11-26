@@ -3,6 +3,7 @@ import { Chat } from './TitleHeader'; // Import Chat interface
 import ContextMenu from './ContextMenu'; // Import the new ContextMenu
 import Markdown from './Markdown';
 import HighlightText from './HighlightText';
+import { InlineKeywordBranch } from './InlineKeywordBranch'; // Import inline branch component
 import { dispatchAddHighlight } from '../lib/events';
 
 export interface Message {
@@ -17,11 +18,18 @@ interface ChatWindowProps {
   chats: Chat[]; // Pass chats to find branches
   onBranchFromSelection: (sourceMessage: Message, selectedText: string) => void;
   onChatClick: (chatId: string) => void; // To navigate to the branch
+  onInlineBranchCreate?: (sourceMessage: Message, selectedText: string, position: { x: number; y: number }) => void;
+  onInlineBranchSendMessage?: (branchChatId: string, content: string) => Promise<string>;
+  onInlineBranchMerge?: (branchChatId: string) => Promise<void>;
+  inlineBranchChatId?: string | null;
+  allMessages?: Message[]; // All messages across all chats (for inline branch display)
+  onInlineBranchClose?: () => void;
 }
 
-const ChatWindow: React.FC<ChatWindowProps> = ({ messages, chats, onBranchFromSelection, onChatClick }) => {
+const ChatWindow: React.FC<ChatWindowProps> = ({ messages, chats, onBranchFromSelection, onChatClick, onInlineBranchCreate, onInlineBranchSendMessage, onInlineBranchMerge, inlineBranchChatId, allMessages, onInlineBranchClose }) => {
   const [contextMenu, setContextMenu] = useState<{ show: boolean; x: number; y: number; text: string; message: Message; } | null>(null);
   const [summarizedMessageId, setSummarizedMessageId] = useState<string | null>(null);
+  const [inlineBranchData, setInlineBranchData] = useState<{ selectedText: string; position: { x: number; y: number } } | null>(null);
   const chatWindowRef = useRef<HTMLDivElement>(null);
   // Track highlights per message for local visual feedback
   const [messageHighlights, setMessageHighlights] = useState<Record<string, string[]>>({});
@@ -57,6 +65,21 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ messages, chats, onBranchFromSe
       return { ...prev, [message.id]: [...list, text] };
     });
     closeContextMenu();
+  };
+
+  const handleInlineBranch = () => {
+    if (!contextMenu) return;
+    const { message, text } = contextMenu;
+    // Store the data temporarily
+    setInlineBranchData({
+      selectedText: text,
+      position: { x: contextMenu.x, y: contextMenu.y },
+    });
+    closeContextMenu();
+    // Call parent callback to create the branch
+    if (onInlineBranchCreate) {
+      onInlineBranchCreate(message, text, { x: contextMenu.x, y: contextMenu.y });
+    }
   };
 
   const closeContextMenu = () => {
@@ -152,7 +175,40 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ messages, chats, onBranchFromSe
           show={contextMenu.show}
           onClose={closeContextMenu}
           onBranch={handleBranch}
+          onInlineBranch={handleInlineBranch}
         />
+      )}
+      {inlineBranchChatId && inlineBranchData && (
+        <>
+          {(() => {
+            const branchMsgs = (allMessages || messages).filter(m => m.chatId === inlineBranchChatId);
+            console.log(`[ChatWindow] Inline branch ${inlineBranchChatId} has ${branchMsgs.length} messages:`, branchMsgs);
+            return null;
+          })()}
+        <InlineKeywordBranch
+          branchChat={{ id: inlineBranchChatId, parentId: null, title: `"${inlineBranchData.selectedText.substring(0, 20)}"` }}
+          branchMessages={(allMessages || messages).filter(m => m.chatId === inlineBranchChatId)}
+          selectedText={inlineBranchData.selectedText}
+          sourceMessageId=""
+          position={inlineBranchData.position}
+          onClose={() => {
+            setInlineBranchData(null);
+            onInlineBranchClose?.();
+          }}
+          onMerge={async () => {
+            if (onInlineBranchMerge) {
+              await onInlineBranchMerge(inlineBranchChatId);
+            }
+            setInlineBranchData(null);
+            onInlineBranchClose?.();
+          }}
+          onSendMessage={async (content) => {
+            if (onInlineBranchSendMessage) {
+              await onInlineBranchSendMessage(inlineBranchChatId, content);
+            }
+          }}
+        />
+        </>
       )}
     </div>
   );

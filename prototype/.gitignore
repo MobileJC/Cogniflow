@@ -20,7 +20,8 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
-
+package-lock.json
+package.json
 # Build artifacts
 dist/
 build/
@@ -41,4 +42,5 @@ venv/
 .vscode/
 .idea/
 *.iml
-
+# github file for copilot instructions
+copilot-instructions.md

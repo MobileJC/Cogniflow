@@ -34,6 +34,7 @@ export default function ChatPage() {
   const [chatNodeMap, setChatNodeMap] = useState<Record<string, string>>({});
   const [rootNodeId, setRootNodeId] = useState<string | null>(null);
   const [apiError, setApiError] = useState<string | null>(null);
+  const [inlineBranchChatId, setInlineBranchChatId] = useState<string | null>(null);
 
   useEffect(() => {
     // Only create initial chat if there are no chats at all
@@ -269,6 +270,67 @@ export default function ChatPage() {
     })();
   };
 
+  const handleInlineBranchCreate = async (
+    sourceMessage: Message,
+    selectedText: string,
+    position: { x: number; y: number }
+  ) => {
+    const newChatId = uuidv4();
+    console.log(`[handleInlineBranchCreate] Creating inline branch with ID: ${newChatId}, text: "${selectedText}"`);
+    setInlineBranchChatId(newChatId);
+    const newChat: Chat = {
+      id: newChatId,
+      parentId: sourceMessage.chatId,
+      sourceMessageId: sourceMessage.id,
+      title: selectedText.substring(0, 30),
+    };
+    setChats((prev) => [...prev, newChat]);
+
+    try {
+      // Map parent chat -> backend node
+      let parentNodeId = chatNodeMap[sourceMessage.chatId] || rootNodeId;
+      if (!parentNodeId) {
+        parentNodeId = await getRootNodeId();
+        setRootNodeId(parentNodeId);
+      }
+      // Create backend branch
+      const branchId = await branchFromNode(parentNodeId!, {
+        carry_messages: true,
+      });
+      console.log(`[handleInlineBranchCreate] Backend branch created with ID: ${branchId}`);
+      setChatNodeMap((prev) => ({ ...prev, [newChatId]: branchId }));
+
+      // Add the user's selected text to the branch and get AI reply
+      const userMessage: Message = {
+        id: uuidv4(),
+        chatId: newChatId,
+        role: "user",
+        content: selectedText,
+      };
+      console.log(`[handleInlineBranchCreate] Adding user message to branch`);
+      setMessages((prev) => [...prev, userMessage]);
+
+      const reply = await chatWithNode(branchId, selectedText);
+      console.log(`[handleInlineBranchCreate] Got AI response: "${reply.substring(0, 50)}..."`);
+      const assistantMessage: Message = {
+        id: uuidv4(),
+        chatId: newChatId,
+        role: "assistant",
+        content: reply,
+      };
+      setMessages((prev) => [...prev, assistantMessage]);
+    } catch (e: any) {
+      console.error(`[handleInlineBranchCreate] Error: ${e?.message}`);
+      const assistantMessage: Message = {
+        id: uuidv4(),
+        chatId: newChatId,
+        role: "assistant",
+        content: `Error: ${e?.message || "Branch/chat failed"}`,
+      };
+      setMessages((prev) => [...prev, assistantMessage]);
+    }
+  };
+
   const handleMerge = async () => {
     const chatToMerge = activeChat;
     if (!chatToMerge || !chatToMerge.parentId) return;
@@ -333,6 +395,104 @@ export default function ChatPage() {
     );
     setChats((prev) => prev.filter((c) => !allIdsToDelete.includes(c.id)));
     setActiveChatId(parentId);
+  };
+
+  const handleInlineBranchSendMessage = async (
+    branchChatId: string,
+    content: string
+  ): Promise<string> => {
+    console.log(`[handleInlineBranchSendMessage] Sending message to branch ${branchChatId}: "${content}"`);
+    const userMessage: Message = {
+      id: uuidv4(),
+      chatId: branchChatId,
+      role: "user",
+      content: content,
+    };
+    setMessages((prev) => [...prev, userMessage]);
+
+    let nodeId = chatNodeMap[branchChatId];
+    if (!nodeId) {
+      const err = `No node mapped for chat ${branchChatId}`;
+      console.error(`[handleInlineBranchSendMessage] Error: ${err}`);
+      const assistantMessage: Message = {
+        id: uuidv4(),
+        chatId: branchChatId,
+        role: "assistant",
+        content: `Error: ${err}`,
+      };
+      setMessages((prev) => [...prev, assistantMessage]);
+      throw new Error(err);
+    }
+
+    try {
+      const reply = await chatWithNode(nodeId, content);
+      console.log(`[handleInlineBranchSendMessage] Got response: "${reply.substring(0, 50)}..."`);
+      const assistantMessage: Message = {
+        id: uuidv4(),
+        chatId: branchChatId,
+        role: "assistant",
+        content: reply,
+      };
+      setMessages((prev) => [...prev, assistantMessage]);
+      return reply;
+    } catch (e: any) {
+      console.error(`[handleInlineBranchSendMessage] Chat error: ${e?.message}`);
+      const assistantMessage: Message = {
+        id: uuidv4(),
+        chatId: branchChatId,
+        role: "assistant",
+        content: `Error: ${e?.message || "Chat failed"}`,
+      };
+      setMessages((prev) => [...prev, assistantMessage]);
+      throw e;
+    }
+  };
+
+  const handleInlineBranchMerge = async (branchChatId: string): Promise<void> => {
+    const chatToMerge = chats.find((c) => c.id === branchChatId);
+    if (!chatToMerge || !chatToMerge.parentId) return;
+
+    const parentId = chatToMerge.parentId;
+    const messagesToMerge = messages.filter((m) => m.chatId === branchChatId);
+
+    const sourceNode = chatNodeMap[branchChatId];
+    const targetNode = chatNodeMap[parentId];
+    if (sourceNode && targetNode) {
+      try {
+        await mergeNodes(targetNode, sourceNode);
+        const node = await getNode(targetNode);
+        const loaded: Message[] = node.messages
+          .filter((m) => m.role === "user" || m.role === "assistant")
+          .map((m) => ({
+            id: uuidv4(),
+            chatId: parentId,
+            role: m.role as "user" | "assistant",
+            content: m.content,
+          }));
+        setMessages((prev) => [
+          ...prev.filter(
+            (m) => m.chatId !== parentId && m.chatId !== branchChatId
+          ),
+          ...loaded,
+        ]);
+      } catch {
+        // Fallback to local merge
+        setMessages((prev) => [
+          ...prev.filter((m) => m.chatId !== branchChatId),
+          ...messagesToMerge.map((m) => ({ ...m, chatId: parentId })),
+        ]);
+      }
+    }
+
+    // Remove the merged inline chat and reconnect sub-branches to parent
+    setChats((prev) =>
+      prev
+        .filter((c) => c.id !== branchChatId) // Remove the merged chat
+        .map((c) =>
+          // Reconnect sub-branches to the parent
+          c.parentId === branchChatId ? { ...c, parentId: parentId } : c
+        )
+    );
   };
 
   const handleSummarize = async () => {
@@ -463,6 +623,12 @@ export default function ChatPage() {
             chats={chats}
             onBranchFromSelection={handleBranchFromSelection}
             onChatClick={setActiveChatId}
+            onInlineBranchCreate={handleInlineBranchCreate}
+            onInlineBranchSendMessage={handleInlineBranchSendMessage}
+            onInlineBranchMerge={handleInlineBranchMerge}
+            inlineBranchChatId={inlineBranchChatId}
+            allMessages={messages}
+            onInlineBranchClose={() => setInlineBranchChatId(null)}
           />
 
           <ChatInput

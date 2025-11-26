@@ -41,23 +41,16 @@ interface TreeLayerProps {
 
 export const TreeLayer: React.FC<TreeLayerProps> = ({
   layer,
-  messages,
   isActive,
-  input,
-  messageRefs,
-  layers,
+
   onLayerClick,
   onHeaderDrag,
   onResize,
-  onBranch,
-  onInputChange,
-  onSend,
 }) => {
   // Get layer color for visual styling
   const isPrimary = layer.color === "primary";
-  const layerColor = !isPrimary && layer.color
-    ? BRANCH_COLORS[parseInt(layer.color)]
-    : null;
+  const layerColor =
+    !isPrimary && layer.color ? BRANCH_COLORS[parseInt(layer.color)] : null;
 
   return (
     <div
