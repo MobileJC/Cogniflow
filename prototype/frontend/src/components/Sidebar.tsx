@@ -1,7 +1,20 @@
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Chat } from './TitleHeader';
+import SidebarHeader from './sidebar/SidebarHeader';
+import ChatTree from './sidebar/ChatTree';
+import CapturePanel from './sidebar/CapturePanel';
+import { CLIPBOARD_ADD_HIGHLIGHT } from '../lib/events';
 
+/**
+ * SidebarProps
+ * - isCollapsed: whether the sidebar is collapsed (affects width and labels)
+ * - onToggle: collapse/expand the sidebar
+ * - chats: list of chats (root and branches) displayed in the tree
+ * - activeChatId: currently selected chat id
+ * - onChatClick: navigate to a chat when clicked
+ * - onToggleTreeView: opens the full-screen tree canvas overlay
+ */
 interface SidebarProps {
   isCollapsed: boolean;
   onToggle: () => void;
@@ -11,6 +24,15 @@ interface SidebarProps {
   onToggleTreeView: () => void;
 }
 
+/**
+ * ChatListItemProps
+ * - chat: the chat to render
+ * - chats: all chats (used to find children)
+ * - depth: indentation level for nested items
+ * - onChatClick: navigate to a chat when clicked
+ * - activeChatId: highlights the active chat
+ * - isCollapsed: compact rendering when true
+ */
 interface ChatListItemProps {
   chat: Chat;
   chats: Chat[];
@@ -55,43 +77,82 @@ const ChatListItem: React.FC<ChatListItemProps> = ({ chat, chats, depth, onChatC
 };
 
 const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, onToggle, chats, activeChatId, onChatClick, onToggleTreeView }) => {
-  const rootChats = chats.filter(chat => chat.parentId === null);
+  // Toggle for the "capture" panel that stores highlighted texts within the sidebar only
+  const [showCaptureBox, setShowCaptureBox] = useState(false);
+
+  // Placeholder storage for highlighted snippets (to be wired to ChatWindow later)
+  const [captured, setCaptured] = useState<Array<{ id: string; text: string; checked: boolean }>>([]);
+
+  // Toggle a snippet's checked state
+  const toggleItem = (id: string) => {
+    setCaptured(prev => prev.map(it => it.id === id ? { ...it, checked: !it.checked } : it));
+  };
+
+  // Remove all checked items (Discard button)
+  const discardChecked = () => {
+    setCaptured(prev => prev.filter(it => !it.checked));
+  };
+
+  // Placeholder handler: create secondary branches for all checked items
+  // NOTE: This will be wired to backend/ChatWindow later. It intentionally does not navigate away.
+  const createBranchesFromChecked = () => {
+    const selected = captured.filter(it => it.checked);
+    // Placeholder: replace with real integration
+    console.log('Create branches from:', selected.map(s => s.text));
+  };
+
+  // TEMP: helper to add a sample snippet for demo purposes
+  const addSample = () => {
+    const id = Math.random().toString(36).slice(2);
+    setCaptured(prev => [...prev, { id, text: `Sample highlight #${prev.length + 1}`, checked: false }]);
+  };
+
+  // Listen for clipboard additions from ChatWindow (global event bus approach)
+  // Event name: 'clipboard:add-highlight' with detail { text: string, messageId?: string }
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const ce = e as CustomEvent<{ text: string; messageId?: string }>;
+      const text = ce.detail?.text?.trim();
+      if (!text) return;
+      const id = Math.random().toString(36).slice(2);
+      // Default to checked = true as requested
+      setCaptured(prev => [{ id, text, checked: true }, ...prev]);
+    };
+    window.addEventListener('clipboard:add-highlight', handler as EventListener);
+    return () => window.removeEventListener('clipboard:add-highlight', handler as EventListener);
+  }, []);
 
   return (
-    <aside className={`bg-card border-r border-border flex flex-col transition-all duration-300 ${isCollapsed ? 'w-16' : 'w-64'}`}>
-      <div className="p-4 flex items-center justify-between flex-shrink-0">
-        {!isCollapsed && <h2 className="text-lg font-semibold">Chats</h2>}
-        <div className="flex items-center gap-2">
-          <button onClick={onToggleTreeView} className="text-muted-foreground hover:text-foreground">
-            {/* Tree Icon */}
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M3 3v18h18"/>
-              <path d="M18 18v-9a4 4 0 0 0-4-4H3"/>
-            </svg>
-          </button>
-          <button onClick={onToggle} className="text-muted-foreground hover:text-foreground">
-            {isCollapsed ? (
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
-            ) : (
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
-            )}
-          </button>
-        </div>
-      </div>
-      <div className="overflow-y-auto flex-grow">
-        <ul className="space-y-1 p-2">
-          {rootChats.map((chat) => (
-            <ChatListItem
-              key={chat.id}
-              chat={chat}
-              chats={chats}
-              depth={0}
-              onChatClick={onChatClick}
-              activeChatId={activeChatId}
-              isCollapsed={isCollapsed}
-            />
-          ))}
-        </ul>
+    <aside className={`bg-card border-r border-border flex flex-col h-full transition-[width] duration-500 ease-in-out ${isCollapsed ? 'w-16' : 'w-64'}`}>
+      <SidebarHeader
+        isCollapsed={isCollapsed}
+        onToggle={onToggle}
+        onToggleTreeView={onToggleTreeView}
+        onToggleCapture={() => setShowCaptureBox((v) => !v)}
+      />
+      <div
+        className={`overflow-y-auto flex-grow transition-opacity transition-transform duration-500 ease-in-out ${
+          isCollapsed ? 'opacity-0 -translate-x-2 pointer-events-none select-none' : 'opacity-100 translate-x-0'
+        }`}
+        aria-hidden={isCollapsed}
+      >
+        {showCaptureBox ? (
+          <CapturePanel
+            items={captured}
+            isCollapsed={isCollapsed}
+            onToggleItem={toggleItem}
+            onDiscard={discardChecked}
+            onCreateBranches={createBranchesFromChecked}
+            onAddSample={addSample}
+          />
+        ) : (
+          <ChatTree
+            chats={chats}
+            activeChatId={activeChatId}
+            onChatClick={onChatClick}
+            isCollapsed={isCollapsed}
+          />
+        )}
       </div>
     </aside>
   );

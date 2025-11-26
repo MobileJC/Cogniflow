@@ -2,6 +2,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Chat } from './TitleHeader'; // Import Chat interface
 import ContextMenu from './ContextMenu'; // Import the new ContextMenu
 import Markdown from './Markdown';
+import HighlightText from './HighlightText';
+import { dispatchAddHighlight } from '../lib/events';
 
 export interface Message {
   id: string;
@@ -21,6 +23,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ messages, chats, onBranchFromSe
   const [contextMenu, setContextMenu] = useState<{ show: boolean; x: number; y: number; text: string; message: Message; } | null>(null);
   const [summarizedMessageId, setSummarizedMessageId] = useState<string | null>(null);
   const chatWindowRef = useRef<HTMLDivElement>(null);
+  // Track highlights per message for local visual feedback
+  const [messageHighlights, setMessageHighlights] = useState<Record<string, string[]>>({});
 
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -40,11 +44,19 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ messages, chats, onBranchFromSe
     setContextMenu(null);
   };
 
+  // Replace branching with adding to clipboard (sidebar capture panel)
   const handleBranch = () => {
-    if (contextMenu) {
-      onBranchFromSelection(contextMenu.message, contextMenu.text);
-      closeContextMenu();
-    }
+    if (!contextMenu) return;
+    const { message, text } = contextMenu;
+    // Dispatch a global event that Sidebar listens to
+    dispatchAddHighlight({ text, messageId: message.id });
+    // Locally record highlight for visual emphasis in this message
+    setMessageHighlights((prev) => {
+      const list = prev[message.id] || [];
+      if (list.includes(text)) return prev;
+      return { ...prev, [message.id]: [...list, text] };
+    });
+    closeContextMenu();
   };
 
   const closeContextMenu = () => {
@@ -66,6 +78,9 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ messages, chats, onBranchFromSe
         document.removeEventListener('click', handleClickOutside);
     };
   }, [contextMenu]);
+
+  // Provide highlights for this message to the HighlightText component
+  const getHighlights = (messageId: string) => messageHighlights[messageId] || [];
 
   return (
     <div 
@@ -95,7 +110,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ messages, chats, onBranchFromSe
                     {message.role === 'assistant' ? (
                       <Markdown>{message.content}</Markdown>
                     ) : (
-                      <p>{message.content}</p>
+                      <HighlightText content={message.content} highlights={getHighlights(message.id)} messageId={message.id} />
                     )}
                 </div>
                 {message.role === 'assistant' && branchedChats.length > 0 && (

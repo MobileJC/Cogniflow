@@ -30,7 +30,7 @@ const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, show, onClose, onBranch
             onClick={handleBranchClick}
             className="block w-full text-left px-4 py-2 text-sm text-foreground hover:bg-accent"
           >
-            Create new branch
+            Add to clipboard
           </button>
         </li>
       </ul>
