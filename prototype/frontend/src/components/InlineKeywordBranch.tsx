@@ -125,7 +125,7 @@ export const InlineKeywordBranch: React.FC<InlineKeywordBranchProps> = ({
   return (
     <div
       ref={containerRef}
-      className="fixed bg-white dark:bg-gray-800 border-2 border-purple-400 dark:border-purple-600 rounded-lg shadow-2xl z-40 flex flex-col hover:shadow-2xl transition-shadow"
+      className="fixed z-40 flex flex-col rounded-2xl bg-white/60 dark:bg-black/40 backdrop-blur-md border border-white/10 dark:border-black/30 shadow-lg overflow-hidden"
       style={{
         left: `${Math.min(pos.x, window.innerWidth - 520)}px`,
         top: `${Math.min(pos.y, window.innerHeight - 520)}px`,
@@ -137,71 +137,70 @@ export const InlineKeywordBranch: React.FC<InlineKeywordBranchProps> = ({
       onMouseLeave={() => setIsHovered(false)}
     >
       {/* Draggable Header */}
-      <div 
+      <div
         onMouseDown={startDrag}
         onTouchStart={startDrag}
-        className="flex items-center justify-between p-3 bg-gradient-to-r from-purple-100 to-pink-100 dark:from-purple-900 dark:to-pink-900 border-b border-purple-300 dark:border-purple-600 cursor-move hover:from-purple-200 hover:to-pink-200 dark:hover:from-purple-800 dark:hover:to-pink-800 transition-colors"
+        className="flex items-center justify-between gap-3 px-4 py-3 cursor-move"
       >
-        <div className="flex-1 min-w-0">
-          <h3 className="text-sm font-bold text-gray-900 dark:text-white truncate">
-            Keyword Branch
-          </h3>
-          <p className="text-xs text-gray-600 dark:text-gray-300 truncate">
-            "{selectedText.substring(0, 30)}{selectedText.length > 30 ? "..." : ""}"
-          </p>
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-9 h-9 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white font-semibold text-sm">
+            KB
+          </div>
+          <div className="min-w-0">
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">Keyword Branch</h3>
+            <p className="text-xs text-gray-600 dark:text-gray-300 truncate">"{selectedText.substring(0, 40)}{selectedText.length > 40 ? '...' : ''}"</p>
+          </div>
         </div>
-        <button
-          onClick={onClose}
-          className="ml-2 flex-shrink-0 p-1 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 rounded hover:bg-purple-200 dark:hover:bg-purple-700 transition-colors"
-          title="Close"
-        >
-          <svg
-            className="w-4 h-4"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onMerge}
+            className="inline-flex items-center gap-2 px-3 py-1.5 bg-white/80 dark:bg-white/5 border border-white/10 dark:border-black/20 rounded-full text-sm text-green-700 dark:text-green-300 hover:brightness-105 transition"
+            title="Merge back to primary"
           >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M6 18L18 6M6 6l12 12"
-            />
-          </svg>
-        </button>
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <path strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" d="M20 12H8M14 6l-6 6 6 6" />
+            </svg>
+            Merge
+          </button>
+
+          <button
+            onClick={onClose}
+            className="p-2 rounded-full text-gray-600 dark:text-gray-300 hover:bg-white/30 dark:hover:bg-white/5 transition"
+            title="Close"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
       </div>
 
       {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50 dark:bg-gray-700">
+      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 bg-transparent">
         {branchMessages.length === 0 ? (
-          <div className="text-sm text-gray-500 dark:text-gray-400 italic">
-            Start a conversation about "{selectedText.substring(0, 20)}
-            {selectedText.length > 20 ? "..." : ""}"
+          <div className="text-sm text-gray-600 dark:text-gray-300 italic px-2 py-3">
+            Start a conversation about "{selectedText.substring(0, 30)}{selectedText.length > 30 ? '...' : ''}"
           </div>
         ) : (
           <>
             {branchMessages.map((msg) => (
-              <div
-                key={msg.id}
-                className={`flex ${
-                  msg.role === "user" ? "justify-end" : "justify-start"
-                }`}
-              >
-                <div
-                  className={`max-w-sm p-3 rounded-lg ${
-                    msg.role === "user"
-                      ? "bg-blue-500 text-white rounded-br-none"
-                      : "bg-white dark:bg-gray-600 text-gray-900 dark:text-white rounded-bl-none border border-gray-200 dark:border-gray-500"
-                  }`}
-                >
-                  {msg.role === "assistant" ? (
-                    <div className="text-sm">
+              <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                {msg.role === 'assistant' && (
+                  <div className="flex items-start gap-2">
+                    <div className="w-8 h-8 rounded-full bg-gray-200 dark:bg-gray-600 flex items-center justify-center text-sm text-gray-700 dark:text-gray-200">AI</div>
+                    <div className="max-w-[78%] bg-white/80 dark:bg-[#111827]/60 border border-white/10 dark:border-black/20 p-3 rounded-xl shadow-sm text-sm text-gray-900 dark:text-gray-100">
                       <Markdown>{msg.content}</Markdown>
                     </div>
-                  ) : (
-                    <p className="text-sm">{msg.content}</p>
-                  )}
-                </div>
+                  </div>
+                )}
+                {msg.role === 'user' && (
+                  <div className="flex items-end">
+                    <div className="max-w-[78%] bg-gradient-to-br from-purple-500 to-pink-500 text-white p-3 rounded-xl shadow-md text-sm">
+                      <p className="break-words">{msg.content}</p>
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
             <div ref={messagesEndRef} />
@@ -210,50 +209,43 @@ export const InlineKeywordBranch: React.FC<InlineKeywordBranchProps> = ({
       </div>
 
       {/* Input Area */}
-      <div className="p-4 bg-white dark:bg-gray-800 border-t border-purple-200 dark:border-purple-700 flex gap-2">
-        <input
-          type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="Ask about..."
-          className="flex-1 px-3 py-2 text-base rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-400"
-          disabled={isLoading}
-        />
-        <button
-          onClick={handleSend}
-          disabled={isLoading || !input.trim()}
-          className="px-3 py-2 bg-purple-500 hover:bg-purple-600 disabled:bg-gray-400 text-white rounded-md transition-colors flex items-center justify-center"
-          title="Send message"
-        >
-          {isLoading ? (
-            <svg className="w-5 h-5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-          ) : (
-            <svg
-              className="w-5 h-5"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
-              />
-            </svg>
-          )}
-        </button>
+      <div className="px-4 py-3 bg-transparent border-t border-white/10 dark:border-black/20">
+        <div className="flex items-center gap-3">
+          <input
+            type="text"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Ask a follow-up..."
+            className="flex-1 px-4 py-2 rounded-full bg-white/90 dark:bg-gray-800/80 border border-white/10 dark:border-black/20 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-300"
+            disabled={isLoading}
+          />
+
+          <button
+            onClick={handleSend}
+            disabled={isLoading || !input.trim()}
+            className="w-10 h-10 rounded-full flex items-center justify-center bg-gradient-to-br from-purple-500 to-pink-500 hover:scale-105 active:scale-95 text-white shadow-md transition-transform disabled:opacity-50"
+            title="Send message"
+          >
+            {isLoading ? (
+              <svg className="w-5 h-5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+            ) : (
+              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                <path strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+              </svg>
+            )}
+          </button>
+        </div>
       </div>
 
-      {/* Footer with Merge Button */}
-      <div className="p-3 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-900 dark:to-pink-900 border-t border-purple-300 dark:border-purple-600">
+      {/* Footer with Merge Button (kept for accessibility) */}
+      <div className="px-4 py-3 bg-transparent">
         <button
           onClick={onMerge}
-          className="w-full px-3 py-2 text-sm font-semibold bg-green-500 hover:bg-green-600 text-white rounded-md transition-colors"
+          className="w-full px-3 py-2 text-sm font-semibold bg-green-600 hover:bg-green-700 text-white rounded-md transition-colors"
           title="Merge this branch back to primary chat"
         >
           Merge Back to Primary
