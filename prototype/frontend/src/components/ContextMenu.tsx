@@ -6,9 +6,10 @@ interface ContextMenuProps {
   show: boolean;
   onClose: () => void;
   onBranch: () => void;
+  onInlineBranch?: () => void;
 }
 
-const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, show, onClose, onBranch }) => {
+const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, show, onClose, onBranch, onInlineBranch }) => {
   if (!show) {
     return null;
   }
@@ -18,6 +19,13 @@ const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, show, onClose, onBranch
     onClose();
   };
 
+  const handleInlineBranchClick = () => {
+    if (onInlineBranch) {
+      onInlineBranch();
+      onClose();
+    }
+  };
+
   return (
     <div
       className="fixed z-50 bg-card border border-border rounded-md shadow-lg"
@@ -25,6 +33,16 @@ const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, show, onClose, onBranch
       onClick={(e) => e.stopPropagation()} 
     >
       <ul className="py-1">
+        {onInlineBranch && (
+          <li>
+            <button
+              onClick={handleInlineBranchClick}
+              className="block w-full text-left px-4 py-2 text-sm text-foreground hover:bg-accent"
+            >
+              💬 Quick Branch (inline)
+            </button>
+          </li>
+        )}
         <li>
           <button
             onClick={handleBranchClick}
